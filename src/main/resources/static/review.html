@@ -45,9 +45,10 @@
       letter-spacing: 0.03em;
     }
 
-    .stage-waiting { background: #1f3a5f; color: #79c0ff; border: 1px solid #1f6feb; }
-    .stage-working { background: #1f2a1f; color: #56d364; border: 1px solid #238636; }
-    .stage-done    { background: #1a1f2e; color: #8b949e; border: 1px solid #30363d; }
+    .stage-waiting       { background: #1f3a5f; color: #79c0ff; border: 1px solid #1f6feb; }
+    .stage-clarification { background: #2d1f5f; color: #c0a0ff; border: 1px solid #7c3aed; }
+    .stage-working       { background: #1f2a1f; color: #56d364; border: 1px solid #238636; }
+    .stage-done          { background: #1a1f2e; color: #8b949e; border: 1px solid #30363d; }
 
     main { max-width: 900px; margin: 32px auto; padding: 0 24px 80px; }
 
@@ -196,16 +197,29 @@
       <span id="polling-text">Waiting for architect to revise the plan…</span>
     </div>
   </div>
+
+  <div id="clarification-section" style="display:none;">
+    <div id="questions-content" class="plan-box">Loading questions…</div>
+    <div id="feedback-section-clarification" style="background:#161b22;border:1px solid #30363d;border-radius:8px;padding:22px 28px;">
+      <label for="clarification-answer" style="display:block;font-size:0.88rem;font-weight:600;color:#8b949e;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.05em;">Your Answer</label>
+      <textarea id="clarification-answer" style="width:100%;min-height:90px;background:#0d1117;border:1px solid #30363d;border-radius:6px;color:#e6edf3;font-size:0.95rem;padding:10px 14px;resize:vertical;font-family:inherit;" placeholder="Answer the architect's questions…"></textarea>
+      <div class="btn-row">
+        <button id="btn-send-clarification">💬 Send Answer</button>
+      </div>
+      <div id="polling-info-clarification" style="display:none;margin-top:18px;font-size:0.87rem;color:#8b949e;align-items:center;gap:8px;">
+        <div class="spinner"></div>
+        <span id="polling-text-clarification">Waiting for architect to process your answer…</span>
+      </div>
+    </div>
+  </div>
 </main>
 
 <script>
   // Load marked.js dynamically — init() fires only after the library is ready.
-  // This avoids any race condition between the CDN script and inline code.
   const markedScript = document.createElement('script');
   markedScript.src = 'https://cdn.jsdelivr.net/npm/marked@12/marked.min.js';
   markedScript.onload = init;
   markedScript.onerror = function () {
-    // CDN unreachable — fall back to plain-text rendering
     window.marked = { parse: function(t) { return '<pre>' + t.replace(/</g, '&lt;') + '</pre>'; } };
     init();
   };
@@ -220,16 +234,24 @@
     var polling      = false;
     var pollInterval = null;
 
-    var badge       = document.getElementById('stage-badge');
-    var wfBadge     = document.getElementById('workflow-id-badge');
-    var planBox     = document.getElementById('plan-content');
-    var banner      = document.getElementById('status-banner');
-    var iterEl      = document.getElementById('iteration-indicator');
-    var feedbackEl  = document.getElementById('feedback');
-    var btnApprove  = document.getElementById('btn-approve');
-    var btnRequest  = document.getElementById('btn-request');
-    var pollingInfo = document.getElementById('polling-info');
-    var pollingText = document.getElementById('polling-text');
+    var badge             = document.getElementById('stage-badge');
+    var wfBadge           = document.getElementById('workflow-id-badge');
+    var planBox           = document.getElementById('plan-content');
+    var banner            = document.getElementById('status-banner');
+    var iterEl            = document.getElementById('iteration-indicator');
+    var feedbackEl        = document.getElementById('feedback');
+    var btnApprove        = document.getElementById('btn-approve');
+    var btnRequest        = document.getElementById('btn-request');
+    var pollingInfo       = document.getElementById('polling-info');
+    var pollingText       = document.getElementById('polling-text');
+
+    var feedbackSection        = document.getElementById('feedback-section');
+    var clarificationSection   = document.getElementById('clarification-section');
+    var questionsBox           = document.getElementById('questions-content');
+    var clarificationAnswer    = document.getElementById('clarification-answer');
+    var btnSendClarification   = document.getElementById('btn-send-clarification');
+    var pollingInfoClarif      = document.getElementById('polling-info-clarification');
+    var pollingTextClarif      = document.getElementById('polling-text-clarification');
 
     disableButtons();
 
@@ -240,10 +262,35 @@
     }
 
     wfBadge.textContent = workflowId;
-    loadPlan();
 
-    // ── Load plan ────────────────────────────────────────────────────────────
+    // ── Bootstrap: check current stage to decide which view to show ─────────
+    fetch(BASE + '/' + workflowId + '/stage')
+      .then(function(r) { return r.ok ? r.json() : null; })
+      .then(function(data) {
+        if (!data) { loadPlan(); return; }
+        if (data.stage === 'AWAITING_CLARIFICATION') {
+          loadClarification();
+        } else {
+          loadPlan();
+        }
+      })
+      .catch(function() { loadPlan(); });
+
+    // ── Plan view ────────────────────────────────────────────────────────────
+    function showPlanView() {
+      feedbackSection.style.display = '';
+      clarificationSection.style.display = 'none';
+      planBox.style.display = '';
+    }
+
+    function showClarificationView() {
+      feedbackSection.style.display = 'none';
+      clarificationSection.style.display = '';
+      planBox.style.display = 'none';
+    }
+
     function loadPlan() {
+      showPlanView();
       iteration++;
       iterEl.textContent = iteration > 1 ? ('Iteration #' + iteration) : '';
       planBox.textContent = 'Loading…';
@@ -271,11 +318,37 @@
         });
     }
 
-    // ── Buttons ──────────────────────────────────────────────────────────────
+    function loadClarification() {
+      showClarificationView();
+      setStageUI('AWAITING_CLARIFICATION');
+      hideBanner();
+      clarificationAnswer.value = '';
+      btnSendClarification.disabled = false;
+      questionsBox.textContent = 'Loading questions…';
+
+      fetch(BASE + '/' + workflowId + '/clarification-content')
+        .then(function(r) {
+          if (!r.ok) {
+            return r.json().catch(function() { return {}; }).then(function(body) {
+              throw new Error(body.error || ('Server returned ' + r.status));
+            });
+          }
+          return r.json();
+        })
+        .then(function(data) {
+          questionsBox.innerHTML = marked.parse(data.content);
+        })
+        .catch(function(e) {
+          showBanner('error', e.message);
+          questionsBox.textContent = '';
+        });
+    }
+
+    // ── Plan review buttons ──────────────────────────────────────────────────
     btnApprove.addEventListener('click', function() {
       disableButtons();
       stopPolling();
-      sendSignal({ action: 'APPROVE' }, function(ok) {
+      sendPlanSignal({ action: 'APPROVE' }, function(ok) {
         if (ok) {
           setStageUI('DONE');
           showBanner('success', '✅ Plan approved! The pipeline is continuing…');
@@ -295,19 +368,52 @@
         return;
       }
       disableButtons();
-      sendSignal({ action: 'REQUEST_CHANGES', feedback: feedback }, function(ok) {
+      sendPlanSignal({ action: 'REQUEST_CHANGES', feedback: feedback }, function(ok) {
         if (ok) {
           setStageUI('ARCHITECT');
           showBanner('info', '🔄 Feedback sent. Waiting for the architect to revise the plan…');
-          startPolling();
+          startPlanPolling();
         } else {
           enableButtons();
         }
       });
     });
 
-    // ── Send signal ──────────────────────────────────────────────────────────
-    function sendSignal(body, cb) {
+    // ── Clarification button ─────────────────────────────────────────────────
+    btnSendClarification.addEventListener('click', function() {
+      var answer = clarificationAnswer.value.trim();
+      if (!answer) {
+        clarificationAnswer.focus();
+        clarificationAnswer.style.borderColor = '#da3633';
+        setTimeout(function() { clarificationAnswer.style.borderColor = ''; }, 1500);
+        return;
+      }
+      btnSendClarification.disabled = true;
+      fetch(BASE + '/' + workflowId + '/clarification', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'PROVIDE_CLARIFICATION', feedback: answer }),
+      })
+        .then(function(r) {
+          if (!r.ok) {
+            return r.json().catch(function() { return {}; }).then(function(err) {
+              showBanner('error', err.error || ('Signal failed — server returned ' + r.status));
+              btnSendClarification.disabled = false;
+            });
+          } else {
+            setStageUI('ARCHITECT');
+            showBanner('info', '💬 Answer sent. Waiting for the architect to continue…');
+            startClarificationPolling();
+          }
+        })
+        .catch(function(e) {
+          showBanner('error', 'Network error: ' + e.message);
+          btnSendClarification.disabled = false;
+        });
+    });
+
+    // ── Send plan signal ─────────────────────────────────────────────────────
+    function sendPlanSignal(body, cb) {
       fetch(BASE + '/' + workflowId + '/plan-review', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -330,7 +436,7 @@
     }
 
     // ── Polling after REQUEST_CHANGES ────────────────────────────────────────
-    function startPolling() {
+    function startPlanPolling() {
       if (polling) return;
       polling = true;
       pollingInfo.classList.add('visible');
@@ -342,13 +448,44 @@
           .then(function(data) {
             if (!data) return;
             pollingText.textContent = 'Current stage: ' + data.stage;
-            if (data.ready) {
+            if (data.stage === 'AWAITING_CLARIFICATION') {
+              stopPolling();
+              pollingInfo.classList.remove('visible');
+              loadClarification();
+            } else if (data.ready) {
               stopPolling();
               pollingInfo.classList.remove('visible');
               loadPlan();
             }
           })
           .catch(function() { /* network hiccup — retry next tick */ });
+      }, 3000);
+    }
+
+    // ── Polling after PROVIDE_CLARIFICATION ──────────────────────────────────
+    function startClarificationPolling() {
+      if (polling) return;
+      polling = true;
+      pollingInfoClarif.style.display = 'flex';
+      pollingTextClarif.textContent = 'Waiting for architect to process your answer…';
+
+      pollInterval = setInterval(function() {
+        fetch(BASE + '/' + workflowId + '/stage')
+          .then(function(r) { return r.ok ? r.json() : null; })
+          .then(function(data) {
+            if (!data) return;
+            pollingTextClarif.textContent = 'Current stage: ' + data.stage;
+            if (data.stage === 'AWAITING_PLAN_REVIEW') {
+              stopPolling();
+              pollingInfoClarif.style.display = 'none';
+              loadPlan();
+            } else if (data.stage === 'AWAITING_CLARIFICATION') {
+              stopPolling();
+              pollingInfoClarif.style.display = 'none';
+              loadClarification();
+            }
+          })
+          .catch(function() { /* network hiccup */ });
       }, 3000);
     }
 
@@ -363,6 +500,7 @@
       badge.textContent = s;
       badge.className = '';
       if (s === 'AWAITING_PLAN_REVIEW')    badge.classList.add('stage-waiting');
+      else if (s === 'AWAITING_CLARIFICATION') badge.classList.add('stage-clarification');
       else if (s === 'DONE')               badge.classList.add('stage-done');
       else                                 badge.classList.add('stage-working');
     }

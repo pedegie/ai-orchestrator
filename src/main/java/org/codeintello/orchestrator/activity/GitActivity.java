@@ -23,4 +23,8 @@ public interface GitActivity {
 
     @ActivityMethod
     String commitAndCreateMR(String worktreePath, String ticketId, String summary);
+
+    /** Same as commitAndCreateMR but opens the PR/MR as a Draft so it's clearly WIP. */
+    @ActivityMethod
+    String commitAndCreateDraftMR(String worktreePath, String ticketId, String summary);
 }

@@ -148,6 +148,49 @@ public class GitActivityImpl implements GitActivity {
     }
 
 
+    @Override
+    public String commitAndCreateDraftMR(String worktreePath, String ticketId, String summary) {
+        var project = orchestratorProperties.getProject();
+
+        log.info("Committing and creating DRAFT MR/PR for {} via {}", ticketId, project.provider());
+        var commitMessage = ticketId + " " + summary;
+        shell.run(worktreePath, "git", "add", "-A");
+        shell.run(worktreePath, "git", "commit", "-m", commitMessage);
+        shell.run(worktreePath, "git", "push", "-u", "origin", ticketId);
+
+        var provider = project.provider().toUpperCase();
+        var token = project.token();
+        var defaultBranch = project.defaultBranch();
+
+        String mrOutput;
+        if ("GITHUB".equals(provider)) {
+            mrOutput = shell.run(worktreePath,
+                    Map.of("GH_TOKEN", token),
+                    "gh", "pr", "create",
+                    "--draft",
+                    "--title", "Draft: " + commitMessage,
+                    "--head", ticketId,
+                    "--base", defaultBranch,
+                    "--body", "⚠️ Draft — coder exceeded max attempts.\n\nImplements " + ticketId + ": " + summary);
+        } else {
+            // GITLAB (default)
+            mrOutput = shell.run(worktreePath,
+                    Map.of("GITLAB_TOKEN", token),
+                    "glab", "mr", "create",
+                    "--title", "Draft: " + commitMessage,
+                    "--source-branch", ticketId,
+                    "--target-branch", defaultBranch,
+                    "--description", "⚠️ Draft — coder exceeded max attempts.\n\nImplements " + ticketId + ": " + summary,
+                    "--draft",
+                    "--yes");
+        }
+
+        var lines = mrOutput.lines()
+                .filter(l -> !l.isBlank())
+                .toList();
+        return lines.isEmpty() ? mrOutput : lines.getLast();
+    }
+
     private void deleteDirectory(Path dir) throws IOException {
         if (!Files.exists(dir)) return;
         try (var walk = Files.walk(dir)) {

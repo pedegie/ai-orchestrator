@@ -63,6 +63,7 @@ public class JiraImplementWorkflowImpl implements JiraImplementWorkflow {
 
     // Signal state — mutated by signal handler, read in await()
     private volatile HumanReviewSignal planReviewSignal;
+    private volatile HumanReviewSignal clarificationSignal;
 
     private static final SearchAttributeKey<String> STAGE_KEY = SearchAttributeKey.forKeyword("Stage");
 
@@ -108,8 +109,12 @@ public class JiraImplementWorkflowImpl implements JiraImplementWorkflow {
                 var plan = architectActivity.generatePlan(worktreePath, req.ticketId(), planFeedback);
 
                 if ("NEEDS_CLARIFICATION".equals(plan.verdict())) {
-                    setStage("NEEDS_CLARIFICATION");
-                    return JiraImplementResult.needsClarification(plan.content());
+                    setStage("AWAITING_CLARIFICATION");
+                    clarificationSignal = null;
+                    Workflow.await(() -> clarificationSignal != null);
+                    planFeedback = clarificationSignal.feedback();
+                    log.info("Clarification received — re-running architect with answer");
+                    continue;
                 }
 
                 setStage("AWAITING_PLAN_REVIEW");
@@ -128,14 +133,16 @@ public class JiraImplementWorkflowImpl implements JiraImplementWorkflow {
                 coderAttempt++;
                 if (coderAttempt > MAX_CODER_ATTEMPTS) {
                     setStage("MAX_RETRIES_EXCEEDED");
-                    return JiraImplementResult.maxRetriesExceeded();
+                    var mrUrl = gitActivity.commitAndCreateDraftMR(worktreePath, req.ticketId(), ticket.summary());
+                    return JiraImplementResult.maxRetriesExceeded(mrUrl);
                 }
 
                 setStage("CODER_ATTEMPT_" + coderAttempt);
                 var impl = coderActivity.implement(worktreePath, req.ticketId(), coderAttempt);
                 if ("FAILURE".equals(impl.verdict())) {
                     setStage("MAX_RETRIES_EXCEEDED");
-                    return JiraImplementResult.maxRetriesExceeded();
+                    var mrUrl = gitActivity.commitAndCreateDraftMR(worktreePath, req.ticketId(), ticket.summary());
+                    return JiraImplementResult.maxRetriesExceeded(mrUrl);
                 }
 
                 gitActivity.generateDiff(worktreePath);
@@ -147,14 +154,18 @@ public class JiraImplementWorkflowImpl implements JiraImplementWorkflow {
                     continue;
                 }
 
-                setStage("QA");
-                var qa = qaActivity.runQa(worktreePath, req.ticketId());
-                if ("FAIL".equals(qa.verdict())) {
-                    log.info("QA failed on attempt #{}", coderAttempt);
-                    continue;
+                if (req.runQa()) {
+                    setStage("QA");
+                    var qa = qaActivity.runQa(worktreePath, req.ticketId());
+                    if ("FAIL".equals(qa.verdict())) {
+                        log.info("QA failed on attempt #{}", coderAttempt);
+                        continue;
+                    }
+                } else {
+                    log.info("QA skipped (runQa=false)");
                 }
 
-                break; // Both reviewer and QA passed
+                break; // Reviewer passed (and QA if enabled)
             }
 
             // ── 6. Commit & create MR ────────────────────────────────────────
@@ -173,6 +184,11 @@ public class JiraImplementWorkflowImpl implements JiraImplementWorkflow {
     @Override
     public void submitPlanReview(HumanReviewSignal signal) {
         this.planReviewSignal = signal;
+    }
+
+    @Override
+    public void submitClarification(HumanReviewSignal signal) {
+        this.clarificationSignal = signal;
     }
 
     @Override

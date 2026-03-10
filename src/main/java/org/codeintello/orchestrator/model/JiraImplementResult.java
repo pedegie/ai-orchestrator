@@ -30,8 +30,10 @@ public record JiraImplementResult(
         return new JiraImplementResult(Status.NEEDS_CLARIFICATION, reason);
     }
 
-    public static JiraImplementResult maxRetriesExceeded() {
+    public static JiraImplementResult maxRetriesExceeded(String mrUrl) {
         return new JiraImplementResult(Status.MAX_RETRIES_EXCEEDED,
-                "Coder exceeded 3 attempts. Manual intervention required.");
+                mrUrl != null
+                        ? "Coder exceeded max attempts. Draft MR created: " + mrUrl
+                        : "Coder exceeded max attempts. Manual intervention required.");
     }
 }

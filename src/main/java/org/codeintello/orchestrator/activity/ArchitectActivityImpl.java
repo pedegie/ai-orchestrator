@@ -27,14 +27,21 @@ public class ArchitectActivityImpl implements ArchitectActivity {
         log.info("Running architect agent for {} (feedback={})", ticketId, feedback != null ? "yes" : "no");
 
         var feedbackSection = feedback != null
-                ? "\n\nIMPORTANT — Human feedback on your previous plan:\n" + feedback
-                        + "\n\nRevise the plan accordingly before writing plan.md."
+                ? "\n\nIMPORTANT — Human response to your previous questions / feedback on your previous plan:\n" + feedback
+                        + "\n\nTake this into account before writing plan.md."
                 : "";
+
+        // Clean questions.md from previous attempt so a stale file doesn't linger
+        var questionsPath = Path.of(projectPath, ".claude", "agents", "state", "questions.md");
+        try { Files.deleteIfExists(questionsPath); } catch (IOException e) { /* ignore */ }
 
         var prompt = """
                 Use the Agent tool with subagent_type 'architect' and this prompt: \
                 'Analyze ticket %s. Read .claude/agents/state/ticket.md for ticket details. \
-                Write the implementation plan to .claude/agents/state/plan.md.%s'
+                If you have enough information, write the implementation plan to .claude/agents/state/plan.md \
+                and make sure the file contains the word PROCEED. \
+                If you need clarification before you can plan, write your questions to \
+                .claude/agents/state/questions.md and write a plan.md that contains only the word NEEDS_CLARIFICATION.%s'
                 """.formatted(ticketId, feedbackSection).strip();
 
         claude.run(projectPath, prompt);

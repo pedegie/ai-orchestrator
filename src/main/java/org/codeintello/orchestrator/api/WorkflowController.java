@@ -53,7 +53,7 @@ public class WorkflowController {
                         .setMemo(Map.of("reviewUrl", reviewUrl))
                         .build());
 
-        WorkflowClient.start(workflow::execute, new JiraImplementRequest(req.ticketId(), projectPath));
+        WorkflowClient.start(workflow::execute, new JiraImplementRequest(req.ticketId(), projectPath, req.runQa()));
 
         return ResponseEntity.accepted().body(Map.of(
                 "workflowId", workflowId,
@@ -136,5 +136,48 @@ public class WorkflowController {
         }
         var ready = "AWAITING_PLAN_REVIEW".equals(currentStage);
         return ResponseEntity.ok(Map.of("ready", ready, "stage", currentStage));
+    }
+
+    /**
+     * Send a clarification answer to a workflow waiting in AWAITING_CLARIFICATION stage.
+     *
+     * POST /api/workflows/jira-TT-123/clarification
+     * { "action": "PROVIDE_CLARIFICATION", "feedback": "The endpoint should be paginated with cursor-based pagination" }
+     */
+    @PostMapping("/{workflowId}/clarification")
+    public ResponseEntity<Void> clarification(
+            @PathVariable String workflowId,
+            @RequestBody HumanReviewSignal signal) {
+
+        log.info("Sending clarification signal to {} — feedback length={}", workflowId,
+                signal.feedback() != null ? signal.feedback().length() : 0);
+        workflowClient.newUntypedWorkflowStub(workflowId)
+                .signal("submitClarification", signal);
+
+        return ResponseEntity.ok().build();
+    }
+
+    /**
+     * Returns the questions.md content for a workflow in AWAITING_CLARIFICATION stage.
+     *
+     * GET /api/workflows/jira-TT-123/clarification-content
+     */
+    @GetMapping("/{workflowId}/clarification-content")
+    public ResponseEntity<Map<String, String>> clarificationContent(@PathVariable String workflowId) {
+        String worktreePath;
+        try {
+            worktreePath = workflowClient.newUntypedWorkflowStub(workflowId)
+                    .query("worktreePath", String.class);
+        } catch (WorkflowNotFoundException e) {
+            log.warn("clarificationContent: workflow not found — workflowId={}", workflowId);
+            return ResponseEntity.status(404).body(Map.of("error", "Workflow not found: " + workflowId));
+        }
+        var questionsFile = Path.of(worktreePath, ".claude", "agents", "state", "questions.md");
+        try {
+            var content = Files.readString(questionsFile);
+            return ResponseEntity.ok(Map.of("content", content));
+        } catch (IOException e) {
+            return ResponseEntity.status(404).body(Map.of("error", "questions.md not found yet"));
+        }
     }
 }

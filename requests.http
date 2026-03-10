@@ -1,6 +1,6 @@
 ### Variables
 @baseUrl = http://localhost:8080
-@ticketId = SVM-435
+@ticketId = SVM-437
 @workflowId = jira-{{ticketId}}
 
 ###
@@ -11,7 +11,8 @@ POST {{baseUrl}}/api/workflows/jira-implement
 Content-Type: application/json
 
 {
-  "ticketId": "{{ticketId}}"
+  "ticketId": "{{ticketId}}",
+  "runQa": true
 }
 
 ###
@@ -42,3 +43,22 @@ Content-Type: application/json
   "action": "REQUEST_CHANGES",
   "feedback": "Your feedback here"
 }
+
+###
+# ─────────────────────────────────────────────
+#  4a. Clarification — get architect's questions
+# ─────────────────────────────────────────────
+GET {{baseUrl}}/api/workflows/{{workflowId}}/clarification-content
+
+###
+# ─────────────────────────────────────────────
+#  4b. Clarification — send answer to architect
+# ─────────────────────────────────────────────
+POST {{baseUrl}}/api/workflows/{{workflowId}}/clarification
+Content-Type: application/json
+
+{
+  "action": "PROVIDE_CLARIFICATION",
+  "feedback": "Your answer here"
+}
+

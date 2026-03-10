@@ -22,6 +22,13 @@ public interface JiraImplementWorkflow {
     @SignalMethod
     void submitPlanReview(HumanReviewSignal signal);
 
+    /**
+     * Human answers the architect's clarification questions (stage=AWAITING_CLARIFICATION).
+     * action=PROVIDE_CLARIFICATION + feedback → architect re-runs with the answer.
+     */
+    @SignalMethod
+    void submitClarification(HumanReviewSignal signal);
+
     /** Returns the current stage the workflow is in — useful for the UI. */
     @QueryMethod
     String currentStage();

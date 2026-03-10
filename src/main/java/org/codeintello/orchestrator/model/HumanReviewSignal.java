@@ -5,7 +5,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 
 /**
  * Signal sent by a human to resume a waiting workflow checkpoint.
- * feedback is required when action == REQUEST_CHANGES; null when APPROVE.
+ * feedback is required when action == REQUEST_CHANGES or PROVIDE_CLARIFICATION; null when APPROVE.
  */
 public record HumanReviewSignal(
         ReviewAction action,
