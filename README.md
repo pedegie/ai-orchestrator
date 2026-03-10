@@ -21,6 +21,8 @@ docker compose -f docker/docker-compose.yml up -d
 
 Starts Temporal + PostgreSQL. Wait ~15 s for setup to finish.
 
+Temporal UI is available at **http://localhost:8088**.
+
 ---
 
 ## 2. Start the app
