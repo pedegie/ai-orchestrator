@@ -1,0 +1,37 @@
+spring:
+  application:
+    name: orchestrator
+  temporal:
+    connection:
+      target: 127.0.0.1:7233
+    workers:
+      - task-queue: jira-implement
+        workflow-classes:
+          - org.codeintello.orchestrator.workflow.JiraImplementWorkflowImpl
+        activity-beans:
+          - jiraActivity
+          - gitActivity
+          - architectActivity
+          - coderActivity
+          - reviewerActivity
+          - qaActivity
+
+orchestrator:
+  claude-binary: ${CLAUDE_BINARY}
+  jira:
+    base-url: ${JIRA_BASE_URL}
+    email: ${JIRA_EMAIL}
+    api-token: ${JIRA_API_TOKEN}
+  project:
+    path: ${PROJECT_PATH}
+    provider: ${PROJECT_GIT_PROVIDER}          # GITLAB or GITHUB
+    default-branch: ${PROJECT_DEFAULT_BRANCH}
+    token: ${PROJECT_GIT_TOKEN}
+
+logging:
+  pattern:
+    console: "%d{HH:mm:ss.SSS} %highlight(%-5level) [%X{ticketId:--}] [%thread] %cyan(%logger{36}) - %msg%n"
+  level:
+    root: INFO
+    org.codeintello.orchestrator: DEBUG
+

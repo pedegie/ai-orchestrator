@@ -1,0 +1,44 @@
+### Variables
+@baseUrl = http://localhost:8080
+@ticketId = SVM-435
+@workflowId = jira-{{ticketId}}
+
+###
+# ─────────────────────────────────────────────
+#  1. Start pipeline
+# ─────────────────────────────────────────────
+POST {{baseUrl}}/api/workflows/jira-implement
+Content-Type: application/json
+
+{
+  "ticketId": "{{ticketId}}"
+}
+
+###
+# ─────────────────────────────────────────────
+#  2. Query current stage
+# ─────────────────────────────────────────────
+GET {{baseUrl}}/api/workflows/{{workflowId}}/stage
+
+###
+# ─────────────────────────────────────────────
+#  3a. Plan review — APPROVE
+# ─────────────────────────────────────────────
+POST {{baseUrl}}/api/workflows/{{workflowId}}/plan-review
+Content-Type: application/json
+
+{
+  "action": "APPROVE"
+}
+
+###
+# ─────────────────────────────────────────────
+#  3b. Plan review — REQUEST_CHANGES
+# ─────────────────────────────────────────────
+POST {{baseUrl}}/api/workflows/{{workflowId}}/plan-review
+Content-Type: application/json
+
+{
+  "action": "REQUEST_CHANGES",
+  "feedback": "Your feedback here"
+}
