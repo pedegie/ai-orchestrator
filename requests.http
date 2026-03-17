@@ -1,7 +1,8 @@
 ### Variables
 @baseUrl = http://localhost:8080
-@ticketId = SVM-437
+@ticketId = SVM-510
 @workflowId = jira-{{ticketId}}
+@defaultBranch = SVM-497
 
 ###
 # ─────────────────────────────────────────────
@@ -12,14 +13,15 @@ Content-Type: application/json
 
 {
   "ticketId": "{{ticketId}}",
-  "runQa": true
+  "defaultBranch": "{{defaultBranch}}",
+  "runQa": false
 }
 
 ###
 # ─────────────────────────────────────────────
 #  2. Query current stage
 # ─────────────────────────────────────────────
-GET {{baseUrl}}/api/workflows/{{workflowId}}/stage
+GET {{baseUrl}}/api/workflows/{{workflowId}}/stage`
 
 ###
 # ─────────────────────────────────────────────

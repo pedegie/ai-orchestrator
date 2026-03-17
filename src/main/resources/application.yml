@@ -25,7 +25,6 @@ orchestrator:
   project:
     path: ${PROJECT_PATH}
     provider: ${PROJECT_GIT_PROVIDER}          # GITLAB or GITHUB
-    default-branch: ${PROJECT_DEFAULT_BRANCH}
     token: ${PROJECT_GIT_TOKEN}
 
 logging:

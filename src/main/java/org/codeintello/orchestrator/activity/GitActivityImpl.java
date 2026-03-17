@@ -24,12 +24,8 @@ public class GitActivityImpl implements GitActivity {
     ShellRunner shell;
     OrchestratorProperties orchestratorProperties;
 
-    // ── Helpers ───────────────────────────────────────────────────────────────
-
     @Override
-    public String createWorktree(String projectPath, String ticketId) {
-        var project = orchestratorProperties.getProject();
-        var defaultBranch = project.defaultBranch();
+    public String createWorktree(String projectPath, String ticketId, String defaultBranch) {
 
         log.info("Pulling latest {} for {}", defaultBranch, projectPath);
         shell.run(projectPath, "git", "pull", "origin", defaultBranch);
@@ -107,7 +103,7 @@ public class GitActivityImpl implements GitActivity {
     }
 
     @Override
-    public String commitAndCreateMR(String worktreePath, String ticketId, String summary) {
+    public String commitAndCreateMR(String worktreePath, String ticketId, String summary, String defaultBranch) {
         var project = orchestratorProperties.getProject();
 
         log.info("Committing and creating MR/PR for {} via {}", ticketId, project.provider());
@@ -118,7 +114,6 @@ public class GitActivityImpl implements GitActivity {
 
         var provider = project.provider().toUpperCase();
         var token = project.token();
-        var defaultBranch = project.defaultBranch();
 
         String mrOutput;
         if ("GITHUB".equals(provider)) {
@@ -149,7 +144,7 @@ public class GitActivityImpl implements GitActivity {
 
 
     @Override
-    public String commitAndCreateDraftMR(String worktreePath, String ticketId, String summary) {
+    public String commitAndCreateDraftMR(String worktreePath, String ticketId, String summary, String defaultBranch) {
         var project = orchestratorProperties.getProject();
 
         log.info("Committing and creating DRAFT MR/PR for {} via {}", ticketId, project.provider());
@@ -160,7 +155,6 @@ public class GitActivityImpl implements GitActivity {
 
         var provider = project.provider().toUpperCase();
         var token = project.token();
-        var defaultBranch = project.defaultBranch();
 
         String mrOutput;
         if ("GITHUB".equals(provider)) {

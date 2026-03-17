@@ -53,7 +53,7 @@ public class WorkflowController {
                         .setMemo(Map.of("reviewUrl", reviewUrl))
                         .build());
 
-        WorkflowClient.start(workflow::execute, new JiraImplementRequest(req.ticketId(), projectPath, req.runQa()));
+        WorkflowClient.start(workflow::execute, new JiraImplementRequest(req.ticketId(), projectPath, req.defaultBranch(), req.runQa()));
 
         return ResponseEntity.accepted().body(Map.of(
                 "workflowId", workflowId,

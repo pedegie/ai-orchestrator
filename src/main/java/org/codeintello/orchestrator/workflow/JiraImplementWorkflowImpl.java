@@ -91,94 +91,91 @@ public class JiraImplementWorkflowImpl implements JiraImplementWorkflow {
 
         // ── 2. Pull master + create isolated worktree ────────────────────────
         setStage("CREATE_WORKTREE");
-        var worktreePath = gitActivity.createWorktree(req.projectPath(), req.ticketId());
+        var worktreePath = gitActivity.createWorktree(req.projectPath(), req.ticketId(), req.defaultBranch());
         this.worktreePathValue = worktreePath;
 
-        try {
-            // ── 3. Init state dir inside the worktree ────────────────────────
-            setStage("INIT_STATE");
-            gitActivity.initState(worktreePath, req.ticketId());
+        // ── 3. Init state dir inside the worktree ────────────────────────
+        setStage("INIT_STATE");
+        gitActivity.initState(worktreePath, req.ticketId());
 
-            // Write ticket.md after state dir is initialized
-            writeTicketFile(worktreePath, ticket);
+        // Write ticket.md after state dir is initialized
+        writeTicketFile(worktreePath, ticket);
 
-            // ── 4. Architect loop (human can request changes with feedback) ───
-            String planFeedback = null;
-            while (true) {
-                setStage("ARCHITECT");
-                var plan = architectActivity.generatePlan(worktreePath, req.ticketId(), planFeedback);
+        // ── 4. Architect loop (human can request changes with feedback) ───
+        String planFeedback = null;
+        while (true) {
+            setStage("ARCHITECT");
+            var plan = architectActivity.generatePlan(worktreePath, req.ticketId(), planFeedback);
 
-                if ("NEEDS_CLARIFICATION".equals(plan.verdict())) {
-                    setStage("AWAITING_CLARIFICATION");
-                    clarificationSignal = null;
-                    Workflow.await(() -> clarificationSignal != null);
-                    planFeedback = clarificationSignal.feedback();
-                    log.info("Clarification received — re-running architect with answer");
-                    continue;
-                }
-
-                setStage("AWAITING_PLAN_REVIEW");
-                planReviewSignal = null;
-                Workflow.await(() -> planReviewSignal != null);
-
-                if (planReviewSignal.action() == ReviewAction.APPROVE) break;
-
-                planFeedback = planReviewSignal.feedback();
-                log.info("Plan review rejected — re-running architect with feedback");
+            if ("NEEDS_CLARIFICATION".equals(plan.verdict())) {
+                setStage("AWAITING_CLARIFICATION");
+                clarificationSignal = null;
+                Workflow.await(() -> clarificationSignal != null);
+                planFeedback = clarificationSignal.feedback();
+                log.info("Clarification received — re-running architect with answer");
+                continue;
             }
 
-            // ── 5. Coder → Reviewer → QA loop ────────────────────────────────
-            int coderAttempt = 0;
-            while (true) {
-                coderAttempt++;
-                if (coderAttempt > MAX_CODER_ATTEMPTS) {
-                    setStage("MAX_RETRIES_EXCEEDED");
-                    var mrUrl = gitActivity.commitAndCreateDraftMR(worktreePath, req.ticketId(), ticket.summary());
-                    return JiraImplementResult.maxRetriesExceeded(mrUrl);
-                }
+            setStage("AWAITING_PLAN_REVIEW");
+            planReviewSignal = null;
+            Workflow.await(() -> planReviewSignal != null);
 
-                setStage("CODER_ATTEMPT_" + coderAttempt);
-                var impl = coderActivity.implement(worktreePath, req.ticketId(), coderAttempt);
-                if ("FAILURE".equals(impl.verdict())) {
-                    setStage("MAX_RETRIES_EXCEEDED");
-                    var mrUrl = gitActivity.commitAndCreateDraftMR(worktreePath, req.ticketId(), ticket.summary());
-                    return JiraImplementResult.maxRetriesExceeded(mrUrl);
-                }
+            if (planReviewSignal.action() == ReviewAction.APPROVE) break;
 
-                gitActivity.generateDiff(worktreePath);
-
-                setStage("REVIEWER");
-                var review = reviewerActivity.review(worktreePath, req.ticketId());
-                if ("CHANGES_REQUIRED".equals(review.verdict())) {
-                    log.info("Reviewer requested changes on attempt #{}", coderAttempt);
-                    continue;
-                }
-
-                if (req.runQa()) {
-                    setStage("QA");
-                    var qa = qaActivity.runQa(worktreePath, req.ticketId());
-                    if ("FAIL".equals(qa.verdict())) {
-                        log.info("QA failed on attempt #{}", coderAttempt);
-                        continue;
-                    }
-                } else {
-                    log.info("QA skipped (runQa=false)");
-                }
-
-                break; // Reviewer passed (and QA if enabled)
-            }
-
-            // ── 6. Commit & create MR ────────────────────────────────────────
-            setStage("COMMIT_AND_MR");
-            var mrUrl = gitActivity.commitAndCreateMR(worktreePath, req.ticketId(), ticket.summary());
-
-            setStage("DONE");
-            return JiraImplementResult.success(mrUrl);
-
-        } finally {
-            // Always clean up the worktree directory (branch stays on GitLab as MR)
-            gitActivity.removeWorktree(req.projectPath(), req.ticketId());
+            planFeedback = planReviewSignal.feedback();
+            log.info("Plan review rejected — re-running architect with feedback");
         }
+
+        // ── 5. Coder → Reviewer → QA loop ────────────────────────────────
+        int coderAttempt = 0;
+        while (true) {
+            coderAttempt++;
+            if (coderAttempt > MAX_CODER_ATTEMPTS) {
+                setStage("MAX_RETRIES_EXCEEDED");
+                var mrUrl = gitActivity.commitAndCreateDraftMR(worktreePath, req.ticketId(), ticket.summary(), req.defaultBranch());
+                gitActivity.removeWorktree(req.projectPath(), req.ticketId());
+                return JiraImplementResult.maxRetriesExceeded(mrUrl);
+            }
+
+            setStage("CODER_ATTEMPT_" + coderAttempt);
+            var impl = coderActivity.implement(worktreePath, req.ticketId(), coderAttempt);
+            if ("FAILURE".equals(impl.verdict())) {
+                setStage("MAX_RETRIES_EXCEEDED");
+                var mrUrl = gitActivity.commitAndCreateDraftMR(worktreePath, req.ticketId(), ticket.summary(), req.defaultBranch());
+                gitActivity.removeWorktree(req.projectPath(), req.ticketId());
+                return JiraImplementResult.maxRetriesExceeded(mrUrl);
+            }
+
+            gitActivity.generateDiff(worktreePath);
+
+            setStage("REVIEWER");
+            var review = reviewerActivity.review(worktreePath, req.ticketId());
+            if ("CHANGES_REQUIRED".equals(review.verdict())) {
+                log.info("Reviewer requested changes on attempt #{}", coderAttempt);
+                continue;
+            }
+
+            if (req.runQa()) {
+                setStage("QA");
+                var qa = qaActivity.runQa(worktreePath, req.ticketId());
+                if ("FAIL".equals(qa.verdict())) {
+                    log.info("QA failed on attempt #{}", coderAttempt);
+                    continue;
+                }
+            } else {
+                log.info("QA skipped (runQa=false)");
+            }
+
+            break; // Reviewer passed (and QA if enabled)
+        }
+
+        // ── 6. Commit & create MR ────────────────────────────────────────
+        setStage("COMMIT_AND_MR");
+        var mrUrl = gitActivity.commitAndCreateMR(worktreePath, req.ticketId(), ticket.summary(), req.defaultBranch());
+        gitActivity.removeWorktree(req.projectPath(), req.ticketId());
+
+        setStage("DONE");
+        return JiraImplementResult.success(mrUrl);
     }
 
     @Override

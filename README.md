@@ -40,7 +40,6 @@ export JIRA_API_TOKEN=your_jira_token
 # Project
 export PROJECT_PATH=/absolute/path/to/repo
 export PROJECT_GIT_PROVIDER=GITLAB          # or GITHUB
-export PROJECT_DEFAULT_BRANCH=master        # or main, etc.
 export PROJECT_GIT_TOKEN=your_git_token     # GitLab: glpat-xxx  /  GitHub: ghp_xxx
 
 mvn spring-boot:run
